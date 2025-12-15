@@ -11,6 +11,9 @@ spy_df_test = spy_df.iloc[int(len(spy_df) * DATA_SPLIT):]
 
 def trial(df, long_window=50, short_window=9):
     '''given a df, long window length and short window length, return the cumulative returns'''
+    # Make a copy to avoid SettingWithCopyWarning
+    df = df.copy()
+    
     # Calculate the fast and slow moving averages
     df['fast_mavg'] = df['Close'].rolling(window=short_window, min_periods=short_window, center=False).mean()
     df['slow_mavg'] = df['Close'].rolling(window=long_window, min_periods=long_window, center=False).mean()
@@ -27,10 +30,22 @@ def trial(df, long_window=50, short_window=9):
     current_entry_price = 0
     # iterate over the dataframe rows and calculate returns
     for index, row in df.iterrows():
-        if row['crossover_long']:
-            current_entry_price = row['Close']
-        elif row['crossover_short'] and current_entry_price != 0:
-            returns.append((row['Close'] - current_entry_price) / current_entry_price)
+        crossover_long_val = row['crossover_long']
+        crossover_short_val = row['crossover_short']
+        close_price = row['Close']
+        
+        # Handle both scalar and Series cases
+        if isinstance(crossover_long_val, pd.Series):
+            crossover_long_val = crossover_long_val.item()
+        if isinstance(crossover_short_val, pd.Series):
+            crossover_short_val = crossover_short_val.item()
+        if isinstance(close_price, pd.Series):
+            close_price = close_price.item()
+            
+        if crossover_long_val:
+            current_entry_price = close_price
+        elif crossover_short_val and current_entry_price != 0:
+            returns.append((close_price - current_entry_price) / current_entry_price)
             current_entry_price = 0
 
     # calculate the average returns
@@ -41,17 +56,21 @@ def trial(df, long_window=50, short_window=9):
     # calculate annualized return 
 
     # print results
+    print("Trial: ")
     print(f"Cumulative returns: {np.prod([1+i for i in returns]) - 1}")
     print(f"Number of profitable trades: {len([i for i in returns if i > 0])}")
     print(f"Number of unprofitable trades: {len([i for i in returns if i < 0])}")
     print(f"Number of trades: {len(returns)}")
     print(f"Average return: {average_returns}")
-    
+    print("\n")
+
     # return cumulative returns
     return np.prod([1+i for i in returns]) - 1
 
 def MACD(df):
     '''given a df, using the MACD formula, return the cumulative returns'''
+    # Make a copy to avoid SettingWithCopyWarning
+    df = df.copy()
     
     # calculate MACD and signal line
     df['MACD'] =  df['Close'].ewm(span=12, adjust=False, min_periods=1).mean() - df['Close'].ewm(span=26, adjust=False, min_periods=1).mean()
@@ -67,10 +86,22 @@ def MACD(df):
     current_entry_price = 0
     # calculate returns
     for index, row in df.iterrows():
-        if row['crossover']:
-            current_entry_price = row['Close']
-        elif row['crossunder'] and current_entry_price != 0:
-            returns.append((row['Close'] - current_entry_price) / current_entry_price)
+        crossover_val = row['crossover']
+        crossunder_val = row['crossunder']
+        close_price = row['Close']
+        
+        # Handle both scalar and Series cases
+        if isinstance(crossover_val, pd.Series):
+            crossover_val = crossover_val.item()
+        if isinstance(crossunder_val, pd.Series):
+            crossunder_val = crossunder_val.item()
+        if isinstance(close_price, pd.Series):
+            close_price = close_price.item()
+            
+        if crossover_val:
+            current_entry_price = close_price
+        elif crossunder_val and current_entry_price != 0:
+            returns.append((close_price - current_entry_price) / current_entry_price)
             current_entry_price = 0
 
     # calculate the average returns
@@ -81,13 +112,15 @@ def MACD(df):
     # calculate annualized return 
 
     # print results
+    print("MACD:")
     print(f"Cumulative returns: {np.prod([1+i for i in returns]) - 1}")
     print(f"Number of profitable trades: {len([i for i in returns if i > 0])}")
     print(f"Number of unprofitable trades: {len([i for i in returns if i < 0])}")
     print(f"Number of trades: {len(returns)}")
     print(f"Average return: {average_returns}")
     print(f"Std return: {std_returns}")
-    
+    print("\n")
+
     # return cumulative return, plot, etc..   
     return np.prod([1+i for i in returns]) - 1 
 
@@ -95,6 +128,9 @@ def MACD(df):
 
 def BollingerBands(df, period=20, std=2):
     '''given a df and optional period and standard deviation '''
+    
+    # Make a copy to avoid SettingWithCopyWarning and alignment issues
+    df = df.copy()
     
     # create indicators
     # calculate SMA 
@@ -109,20 +145,36 @@ def BollingerBands(df, period=20, std=2):
     # calculate price hugging 
     # calculate price moving out of bands
 
-    # calculating price bouncing from bottom
-    df['bounce_up'] = (df['SMA'] > df['lower']) & (df['SMA'].shift(1) <= df['lower'].shift(1))
+    # calculating price bouncing from bottom (price crosses above lower band)
+    close_series = df['Close'].squeeze() if isinstance(df['Close'], pd.DataFrame) else df['Close']
+    lower_series = df['lower'].squeeze() if isinstance(df['lower'], pd.DataFrame) else df['lower']
+    upper_series = df['upper'].squeeze() if isinstance(df['upper'], pd.DataFrame) else df['upper']
     
-    # calculating price bouncing from top 
-    df['bounce_down'] = (df['SMA'] < df['upper']) & (df['SMA'].shift(1) >= df['upper'].shift(1))
+    df['bounce_up'] = (close_series > lower_series) & (close_series.shift(1) <= lower_series.shift(1))
+    
+    # calculating price bouncing from top (price crosses below upper band)  
+    df['bounce_down'] = (close_series < upper_series) & (close_series.shift(1) >= upper_series.shift(1))
 
     # calculate returns
     returns = []
     current_entry_price = 0
     for index, row in df.iterrows():
-        if row['bounce_up']:
-            current_entry_price = row['Close']
-        elif row['bounce_down'] and current_entry_price != 0:
-            returns.append((row['Close'] - current_entry_price) / current_entry_price)
+        bounce_up_val = row['bounce_up']
+        bounce_down_val = row['bounce_down']
+        close_price = row['Close']
+        
+        # Handle both scalar and Series cases
+        if isinstance(bounce_up_val, pd.Series):
+            bounce_up_val = bounce_up_val.item()
+        if isinstance(bounce_down_val, pd.Series):
+            bounce_down_val = bounce_down_val.item()
+        if isinstance(close_price, pd.Series):
+            close_price = close_price.item()
+            
+        if bounce_up_val and current_entry_price == 0:
+            current_entry_price = close_price
+        elif bounce_down_val and current_entry_price != 0:
+            returns.append((close_price - current_entry_price) / current_entry_price)
             current_entry_price = 0
 
     # calculate the average returns
@@ -133,18 +185,20 @@ def BollingerBands(df, period=20, std=2):
     # calculate annualized return 
 
     # print results
+    print("Bollinger Bands:")
     print(f"Cumulative returns: {np.prod([1+i for i in returns]) - 1}")
     print(f"Number of profitable trades: {len([i for i in returns if i > 0])}")
     print(f"Number of unprofitable trades: {len([i for i in returns if i < 0])}")
     print(f"Number of trades: {len(returns)}")
     print(f"Average return: {average_returns}")
-    
+    print("\n")
+
     # return cumulative return, plot, etc..   
     return np.prod([1+i for i in returns]) - 1
 
-
-BollingerBands(spy_df_train)
-
+trial(spy_df_test)
+MACD(spy_df_test)
+BollingerBands(spy_df_test)
 
 
 """
