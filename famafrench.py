@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 end = dt.date(2023,12,31)
 start = dt.date(end.year-5, end.month, end.day)
 funds = ['VGT']
-funds_returns = yf.download(funds, start=start, end=end)['Adj Close'].pct_change()
+funds_returns = yf.download(funds, start=start, end=end, auto_adjust=False)['Adj Close'].pct_change()
 
 # resample to monthly period, much less data points
 funds_returns = funds_returns.resample('M').agg(lambda x: (x+1).prod() - 1)
